@@ -1,4 +1,4 @@
-const CACHE = 'driver-status-v2';   // ← v2
+const CACHE = 'driver-status-v3';
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(['./', './index.html', './manifest.json'])));
   self.skipWaiting();
@@ -9,7 +9,7 @@ self.addEventListener('activate', e => e.waitUntil(
   ).then(() => self.clients.claim())
 ));
 self.addEventListener('fetch', e => {
-  if (new URL(e.request.url).origin === 'https://script.google.com') return; // API не кэшируем
+  if (new URL(e.request.url).origin === 'https://script.google.com') return;
   e.respondWith(
     caches.match(e.request, { ignoreSearch: true }).then(r => r || fetch(e.request))
   );
