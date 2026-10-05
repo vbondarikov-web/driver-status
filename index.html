@@ -35,7 +35,8 @@
   #btn-logout { background:none; border:1px solid #475569; color:#94a3b8; padding:6px 14px;
                 border-radius:8px; cursor:pointer; font-size:13px; }
   .date-line { text-align:center; color:#64748b; font-size:14px; margin-bottom:6px; }
-  .cur-status { text-align:center; font-size:20px; font-weight:600; padding:14px 0 22px; }
+  .cur-status { text-align:center; font-size:20px; font-weight:600; padding:10px 0 8px; }
+  #vac-line { text-align:center; color:#94a3b8; font-size:13px; margin-bottom:16px; min-height:16px; }
 
   .status-btn { display:flex; align-items:center; gap:14px; width:100%; padding:18px; margin-bottom:12px;
                 background:#0f172a; border:2px solid #334155; border-radius:14px; color:#e2e8f0;
@@ -44,6 +45,8 @@
   .status-btn.selected { border-color:#38bdf8; background:#164e63; box-shadow:0 0 14px rgba(56,189,248,.3); }
   .status-btn[data-s="В работе"].selected { border-color:#4ade80; background:#14532d; box-shadow:0 0 14px rgba(74,222,128,.3); }
   .status-btn[data-s="Ремонт"].selected   { border-color:#fb923c; background:#7c2d12; box-shadow:0 0 14px rgba(251,146,60,.3); }
+  #btn-endvac { border-color:#f87171; }
+  #btn-endvac:active { background:#450a0a; }
 
   .sync { display:flex; align-items:center; gap:8px; justify-content:center; margin-top:18px; font-size:13px; color:#64748b; }
   .dot { width:10px; height:10px; border-radius:50%; background:#f87171; }
@@ -62,10 +65,36 @@
   #m-cancel { background:#334155; color:#e2e8f0; }
   #m-ok { background:#f59e0b; color:#0f172a; }
 
+  #m-period { margin-bottom:16px; text-align:left; }
+  .p-row { display:flex; align-items:center; gap:10px; margin-bottom:10px; color:#cbd5e1; font-size:14px; }
+  .p-row input { flex:1; margin:0; padding:10px; }
+  .wide-btn { width:100%; padding:12px; border-radius:10px; border:none; background:#0ea5e9;
+              color:#0f172a; font-weight:600; font-size:15px; cursor:pointer; margin-top:10px; }
+
   #toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%) translateY(80px);
            background:#0f172a; border:1px solid #38bdf8; color:#e2e8f0; padding:12px 22px;
            border-radius:12px; font-size:14px; transition:transform .25s; z-index:20; max-width:90%; }
   #toast.show { transform:translateX(-50%) translateY(0); }
+
+  /* Спиннер */
+  .btn-loading { position:relative; pointer-events:none; opacity:.75; }
+  .btn-loading::after {
+    content:''; position:absolute; top:50%; right:16px; width:18px; height:18px; margin-top:-9px;
+    border:3px solid rgba(15,23,42,.25); border-top-color:#0f172a; border-radius:50%;
+    animation:spin .7s linear infinite;
+  }
+  @keyframes spin { to { transform:rotate(360deg); } }
+
+  /* Диагностика */
+  .diagnostic-box { margin-top:20px; padding-top:18px; border-top:1px solid #334155; }
+  #btn-diagnostics { width:100%; padding:12px; color:#bae6fd; background:#172554;
+                     border:1px solid #2563eb; border-radius:10px; cursor:pointer; font-size:14px; }
+  #btn-diagnostics:disabled { opacity:.6; cursor:wait; }
+  #diagnostic-result { margin-top:12px; padding:14px; border-radius:10px; font-size:13px;
+                       line-height:1.55; white-space:pre-wrap; overflow-wrap:anywhere; }
+  #diagnostic-result.ok { color:#bbf7d0; background:#052e16; border:1px solid #16a34a; }
+  #diagnostic-result.error { color:#fecaca; background:#450a0a; border:1px solid #dc2626; }
+  #diagnostic-result.checking { color:#bfdbfe; background:#172554; border:1px solid #3b82f6; }
 </style>
 </head>
 <body>
@@ -96,6 +125,11 @@
 
     <p class="hint">Если забыли логин или пароль —<br>обратитесь к логисту</p>
     <p id="auth-msg"></p>
+
+    <div class="diagnostic-box">
+      <button id="btn-diagnostics" type="button">Проверить подключение к таблице</button>
+      <div id="diagnostic-result" hidden></div>
+    </div>
   </div>
 
   <!-- ГЛАВНЫЙ ЭКРАН -->
@@ -107,10 +141,15 @@
     <div class="card">
       <div class="date-line" id="today-line"></div>
       <div class="cur-status" id="cur-status">—</div>
+      <div id="vac-line"></div>
 
       <button class="status-btn" data-s="В работе"><span class="em">🚚</span> В работе</button>
       <button class="status-btn" data-s="Выходной"><span class="em">🏖️</span> Выходной</button>
       <button class="status-btn" data-s="Ремонт"><span class="em">🔧</span> Ремонт</button>
+
+      <button class="status-btn" id="btn-endvac" hidden>
+        <span class="em">🚨</span> Прервать выходной (срочно на работу)
+      </button>
     </div>
     <div class="sync"><span class="dot" id="net-dot"></span><span id="sync-text"></span></div>
   </div>
@@ -119,12 +158,19 @@
 <!-- МОДАЛЬНОЕ ОКНО -->
 <div id="overlay">
   <div class="modal">
-    <h3>⚠️ Внимание!</h3>
-    <p id="m-text">Обязательно сообщите логисту об изменении статуса!</p>
+    <h3 id="m-title">⚠️ Внимание!</h3>
+    <p id="m-text"></p>
+
+    <div id="m-period" hidden>
+      <div class="p-row"><span>С&nbsp;</span><input type="date" id="p-from"></div>
+      <div class="p-row"><span>По</span><input type="date" id="p-to"></div>
+    </div>
+
     <div class="row">
       <button id="m-cancel">Отмена</button>
-      <button id="m-ok">Понятно, продолжить</button>
+      <button id="m-ok">Продолжить</button>
     </div>
+    <button id="m-period-btn" class="wide-btn" hidden>Установить период выходных</button>
   </div>
 </div>
 
@@ -134,15 +180,29 @@
 const API_URL = 'https://script.google.com/macros/s/AKfycbz0Lj11rGHF_mAumID2y-L5TsRoZzONixHpcuLhLDByiN0FadZRi_IIIIkT55eHpWIC/exec';
 
 // ---------- состояние ----------
-let user   = JSON.parse(localStorage.getItem('dv_user') || sessionStorage.getItem('dv_user') || 'null');
-let queue  = JSON.parse(localStorage.getItem('dv_queue') || '[]');
-let cur    = JSON.parse(localStorage.getItem('dv_cur') || 'null');
-let pendingStatus = null;
+let user  = JSON.parse(localStorage.getItem('dv_user') || sessionStorage.getItem('dv_user') || 'null');
+let queue = JSON.parse(localStorage.getItem('dv_queue') || '[]');
+let cur   = JSON.parse(localStorage.getItem('dv_cur') || 'null');
+let vac   = JSON.parse(localStorage.getItem('dv_vac') || 'null'); // {start,end} 'dd.mm.yyyy'
+let pendingStatus = null, modalMode = null;
 
 function todayStr() {
   const d = new Date(), p = n => (n < 10 ? '0' + n : '' + n);
   return p(d.getDate()) + '.' + p(d.getMonth() + 1) + '.' + d.getFullYear();
 }
+function isoToday() {
+  const d = new Date(), p = n => (n < 10 ? '0' + n : '' + n);
+  return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
+}
+function dToS(v) { const p = v.split('-'); return p[2] + '.' + p[1] + '.' + p[0]; }   // yyyy-mm-dd -> dd.mm.yyyy
+function cmpDates(a, b) { // сравнение дат 'dd.mm.yyyy'
+  const f = s => s.split('.')[2] + s.split('.')[1] + s.split('.')[0];
+  return f(a).localeCompare(f(b));
+}
+function inVacationToday() {
+  return vac && cmpDates(todayStr(), vac.start) >= 0 && cmpDates(todayStr(), vac.end) <= 0;
+}
+
 function saveUser() {
   localStorage.removeItem('dv_user'); sessionStorage.removeItem('dv_user');
   if (!user) return;
@@ -150,8 +210,9 @@ function saveUser() {
 }
 function saveQueue() { localStorage.setItem('dv_queue', JSON.stringify(queue)); }
 function saveCur()   { localStorage.setItem('dv_cur', JSON.stringify(cur)); }
+function saveVac()   { localStorage.setItem('dv_vac', JSON.stringify(vac)); }
 
-// ---------- API (text/plain — чтобы не было CORS/preflight) ----------
+// ---------- API ----------
 async function api(action, data) {
   const res = await fetch(API_URL, {
     method: 'POST',
@@ -159,13 +220,19 @@ async function api(action, data) {
     body: JSON.stringify(Object.assign({ action: action }, data || {}))
   });
   const text = await res.text();
-  try { return JSON.parse(text); } catch(e) { throw new Error(text.slice(0, 300)); }
+  try { return JSON.parse(text); } catch (e) { throw new Error(text.slice(0, 500)); }
 }
 
 function toast(t) {
   const el = document.getElementById('toast');
   el.textContent = t; el.classList.add('show');
   clearTimeout(el._t); el._t = setTimeout(() => el.classList.remove('show'), 3000);
+}
+
+// кнопка со спиннером
+function btnLoad(btn, on) {
+  btn.disabled = on;
+  btn.classList.toggle('btn-loading', on);
 }
 
 // ---------- экраны ----------
@@ -184,39 +251,119 @@ function showMain() {
 
 // ---------- статусы ----------
 function effectiveStatus() {
+  if (inVacationToday()) return 'Выходной';
   if (cur && cur.date === todayStr()) return cur.status;
   return 'Не отмечен';
 }
 function renderStatus() {
   const s = effectiveStatus();
   document.getElementById('cur-status').textContent = s;
-  document.querySelectorAll('.status-btn').forEach(b =>
+  document.querySelectorAll('.status-btn[data-s]').forEach(b =>
     b.classList.toggle('selected', b.dataset.s === s));
+
+  // период выходных + кнопка прерывания
+  const vl = document.getElementById('vac-line');
+  const eb = document.getElementById('btn-endvac');
+  if (vac && cmpDates(todayStr(), vac.end) <= 0) {
+    vl.textContent = 'Выходной: с ' + vac.start + ' по ' + vac.end;
+    eb.hidden = false;
+  } else {
+    vl.textContent = '';
+    eb.hidden = true;
+  }
 }
 
-document.querySelectorAll('.status-btn').forEach(b => {
+// ---------- модальное окно ----------
+function closeModal() { document.getElementById('overlay').style.display = 'none'; }
+
+document.querySelectorAll('.status-btn[data-s]').forEach(b => {
   b.addEventListener('click', () => {
     const s = b.dataset.s;
-    if (effectiveStatus() === s) { toast('Этот статус уже установлен'); return; }
+    if (effectiveStatus() === s && s !== 'Выходной') { toast('Этот статус уже установлен'); return; }
     pendingStatus = s;
-    document.getElementById('m-text').textContent =
-      'Обязательно сообщите логисту об изменении статуса!';
+    if (s === 'Выходной') {
+      modalMode = 'vacation';
+      document.getElementById('m-title').textContent = '🏖️ Выходной';
+      document.getElementById('m-text').textContent =
+        'Обязательно сообщите логисту! Выберите вариант:';
+      document.getElementById('m-ok').textContent = 'Только сегодня';
+      document.getElementById('m-period').hidden = false;
+      document.getElementById('m-period-btn').hidden = false;
+      document.getElementById('p-from').value = isoToday();
+      document.getElementById('p-to').value = isoToday();
+    } else {
+      modalMode = 'warn';
+      document.getElementById('m-title').textContent = '⚠️ Внимание!';
+      document.getElementById('m-text').textContent =
+        'Обязательно сообщите логисту об изменении статуса!';
+      document.getElementById('m-ok').textContent = 'Понятно, продолжить';
+      document.getElementById('m-period').hidden = true;
+      document.getElementById('m-period-btn').hidden = true;
+    }
     document.getElementById('overlay').style.display = 'flex';
   });
 });
-document.getElementById('m-cancel').onclick = () =>
-  document.getElementById('overlay').style.display = 'none';
+
+document.getElementById('btn-endvac').addEventListener('click', () => {
+  modalMode = 'endvac';
+  document.getElementById('m-title').textContent = '🚨 Срочный вызов';
+  document.getElementById('m-text').textContent =
+    'Прервать выходной и выйти на работу сегодня? Обязательно сообщите логисту!';
+  document.getElementById('m-ok').textContent = 'Да, выхожу на работу';
+  document.getElementById('m-period').hidden = true;
+  document.getElementById('m-period-btn').hidden = true;
+  document.getElementById('overlay').style.display = 'flex';
+});
+
+document.getElementById('m-cancel').onclick = closeModal;
+
 document.getElementById('m-ok').onclick = () => {
-  document.getElementById('overlay').style.display = 'none';
-  applyStatus(pendingStatus);
+  closeModal();
+  if (modalMode === 'warn') applyStatus(pendingStatus);
+  else if (modalMode === 'vacation') applyStatus('Выходной');
+  else if (modalMode === 'endvac') applyEndVacation();
 };
 
+document.getElementById('m-period-btn').onclick = () => {
+  const from = document.getElementById('p-from').value;
+  const to = document.getElementById('p-to').value;
+  if (!from || !to) { toast('Укажите обе даты'); return; }
+  if (cmpDates(dToS(from), dToS(to)) > 0) { toast('Дата «по» раньше даты «с»'); return; }
+  closeModal();
+  applyPeriod(dToS(from), dToS(to));
+};
+
+// ---------- применение статусов ----------
 function applyStatus(s) {
   cur = { date: todayStr(), status: s };
-  saveCur(); renderStatus();
-  queue.push({ login: user.login, fio: user.fio, status: s, date: todayStr() });
+  if (s !== 'Выходной' && !inVacationToday()) vac = null;
+  if (s === 'Выходной' && !vac) vac = { start: todayStr(), end: todayStr() };
+  saveCur(); saveVac(); renderStatus();
+  queue.push({ action: 'setStatus', login: user.login, fio: user.fio, status: s, date: todayStr() });
   saveQueue();
   toast('Сохранено' + (navigator.onLine ? '' : ' (отправится при появлении сети)'));
+  trySync();
+}
+
+function applyPeriod(from, to) {
+  vac = { start: from, end: to };
+  if (cmpDates(todayStr(), from) >= 0 && cmpDates(todayStr(), to) <= 0)
+    cur = { date: todayStr(), status: 'Выходной' };
+  saveVac(); saveCur(); renderStatus();
+  queue.push({ action: 'setPeriod', login: user.login, fio: user.fio, from: from, to: to });
+  saveQueue();
+  toast('Выходной с ' + from + ' по ' + to + ' сохранён' +
+        (navigator.onLine ? '' : ' (отправится при появлении сети)'));
+  trySync();
+}
+
+function applyEndVacation() {
+  vac = null;
+  cur = { date: todayStr(), status: 'В работе' };
+  saveVac(); saveCur(); renderStatus();
+  queue.push({ action: 'endVacation', login: user.login, fio: user.fio, date: todayStr() });
+  saveQueue();
+  toast('Выходной прерван. Вы в работе. Сообщите логисту!');
   trySync();
 }
 
@@ -236,10 +383,10 @@ async function trySync() {
   while (queue.length) {
     const item = queue[0];
     try {
-      const r = await api('setStatus', item);
+      const r = await api(item.action || 'setStatus', item);
       if (r.ok) { queue.shift(); saveQueue(); }
       else { toast(r.error || 'Ошибка отправки'); break; }
-    } catch (e) { break; } // нет сети / сервер недоступен — попробуем позже
+    } catch (e) { break; }
   }
   syncUI();
   if (!queue.length) loadServerStatus();
@@ -250,7 +397,11 @@ async function loadServerStatus() {
   try {
     const r = await api('getStatus', { login: user.login });
     if (r.deleted) { toast('Ваш профиль удалён'); doLogout(); return; }
-    if (r.ok) { cur = { date: todayStr(), status: r.status }; saveCur(); renderStatus(); }
+    if (r.ok) {
+      cur = { date: todayStr(), status: r.status };
+      vac = r.vacEnd ? { start: todayStr(), end: r.vacEnd } : null;
+      saveCur(); saveVac(); renderStatus();
+    }
   } catch (e) {}
 }
 
@@ -275,12 +426,18 @@ document.getElementById('btn-login').onclick = async () => {
   const pass = document.getElementById('l-pass').value;
   if (!login || !pass) { msg.textContent = 'Заполните поля'; return; }
   if (!navigator.onLine) { msg.textContent = 'Нет сети. Войдите при появлении интернета'; return; }
+  const btn = document.getElementById('btn-login');
+  btnLoad(btn, true);
   try {
     const r = await api('login', { login: login, password: pass });
     if (!r.ok) { msg.textContent = r.error; return; }
     user = { login: login, fio: r.fio, remember: document.getElementById('remember').checked };
     saveUser(); showMain();
-  } catch (e) { msg.textContent = 'Нет связи с сервером'; }
+  } catch (e) {
+    console.error('Ошибка входа:', e);
+    msg.textContent = 'Не удалось связаться с сервером. Проверьте подключение.';
+    runApiDiagnostics();
+  } finally { btnLoad(btn, false); }
 };
 
 document.getElementById('btn-reg').onclick = async () => {
@@ -290,26 +447,109 @@ document.getElementById('btn-reg').onclick = async () => {
   const pass = document.getElementById('r-pass').value;
   if (!fio || !login || !pass) { msg.textContent = 'Заполните все поля'; return; }
   if (!navigator.onLine) { msg.textContent = 'Для регистрации нужен интернет'; return; }
+  const btn = document.getElementById('btn-reg');
+  btnLoad(btn, true);
   try {
     const r = await api('register', { fio: fio, login: login, password: pass });
     if (!r.ok) { msg.textContent = r.error; return; }
     user = { login: login, fio: r.fio, remember: true };
     saveUser(); showMain();
-  } catch (e) { msg.textContent = 'Нет связи с сервером'; }
+  } catch (e) {
+    console.error('Ошибка регистрации:', e);
+    msg.textContent = 'Не удалось связаться с сервером. Проверьте подключение.';
+    runApiDiagnostics();
+  } finally { btnLoad(btn, false); }
 };
 
 function doLogout() {
-  user = null; cur = null; queue = [];
-  saveUser(); saveCur(); saveQueue();
+  user = null; cur = null; queue = []; vac = null;
+  saveUser(); saveCur(); saveQueue(); saveVac();
   clearInterval(window._sync);
   showAuth();
 }
 document.getElementById('btn-logout').onclick = doLogout;
 
-// регистрация service worker (офлайн-открытие приложения)
+// ---------- диагностика ----------
+function diagnosticShow(text, type) {
+  const box = document.getElementById('diagnostic-result');
+  box.hidden = false;
+  box.className = type || '';
+  box.textContent = text;
+}
+
+function diagnosticErrorMessage(error) {
+  const message = String(error && error.message ? error.message : error);
+  if (message.includes('Failed to fetch') || message.includes('NetworkError')) {
+    return [
+      'Не удалось связаться с API.',
+      '',
+      'Возможные причины:',
+      '• нет подключения к интернету;',
+      '• неверно указан URL веб-приложения;',
+      '• доступ к развертыванию не «Все»;',
+      '• скрипт не опубликован (нужна новая версия).'
+    ].join('\n');
+  }
+  return message;
+}
+
+async function runApiDiagnostics() {
+  const button = document.getElementById('btn-diagnostics');
+  button.disabled = true;
+  diagnosticShow('Проверка подключения…', 'checking');
+  try {
+    if (!API_URL) throw new Error('API_URL не указан.');
+    let parsedUrl;
+    try { parsedUrl = new URL(API_URL); } catch (e) {
+      throw new Error('API_URL неправильного формата. Ожидается:\nhttps://script.google.com/macros/s/.../exec');
+    }
+    if (parsedUrl.hostname !== 'script.google.com' || !parsedUrl.pathname.endsWith('/exec'))
+      throw new Error('Неверная ссылка — нужен URL веб-приложения, заканчивающийся на /exec.');
+
+    diagnosticShow('1/3. Проверяю доступ к API…', 'checking');
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
+    let response;
+    try {
+      response = await fetch(API_URL + '?diagnostic=1', {
+        method: 'GET', redirect: 'follow', cache: 'no-store', signal: controller.signal
+      });
+    } finally { clearTimeout(timeout); }
+
+    const responseText = await response.text();
+    let serverResult;
+    try { serverResult = JSON.parse(responseText); } catch (e) {
+      if (responseText.includes('Sign in') || responseText.includes('accounts.google.com'))
+        throw new Error('Google требует вход в аккаунт.\nОткройте Apps Script → Развернуть → Управление развертываниями → Кто имеет доступ: Все.');
+      throw new Error('API вернул неправильный ответ.\nHTTP: ' + response.status + '\n\n' + responseText.slice(0, 500));
+    }
+    if (!response.ok) throw new Error('Сервер ответил ошибкой HTTP ' + response.status);
+    if (!serverResult.ok)
+      throw new Error('API отвечает, но проверка не пройдена:\n' + (serverResult.message || 'Причина неизвестна'));
+
+    diagnosticShow('2/3. Сервер и таблица доступны.\nПроверяю POST…', 'checking');
+    const postResult = await api('ping', { diagnostic: true });
+    if (!postResult.ok)
+      throw new Error('GET работает, но POST не работает:\n' + (postResult.message || postResult.error || 'Неизвестная ошибка'));
+
+    diagnosticShow(
+      '3/3. Подключение исправно.\n\n' +
+      '✓ URL API правильный\n✓ Развертывание доступно\n✓ Таблица открыта\n' +
+      '✓ GET работает\n✓ POST работает\n✓ Все листы найдены\n\nМожно регистрироваться и входить.',
+      'ok');
+  } catch (error) {
+    diagnosticShow('Диагностика не пройдена\n\n' + diagnosticErrorMessage(error), 'error');
+    console.error('Ошибка диагностики API:', error);
+  } finally {
+    button.disabled = false;
+  }
+}
+document.getElementById('btn-diagnostics').onclick = runApiDiagnostics;
+
+// ---------- service worker ----------
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
 
-// запуск
+// ---------- запуск ----------
 if (user) showMain(); else showAuth();
 syncUI();
 </script>
