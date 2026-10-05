@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>Статус водителя</title>
+<link rel="manifest" href="manifest.json">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; font-family:'Segoe UI',Roboto,sans-serif; }
+  body { background:linear-gradient(160deg,#0f172a,#1e293b); min-height:100vh; color:#e2e8f0;
+         display:flex; justify-content:center; padding:24px 16px; }
+  .wrap { width:100%; max-width:420px; }
+  .logo { text-align:center; font-size:48px; margin-bottom:8px; }
+  h1 { text-align:center; font-size:22px; margin-bottom:20px; color:#38bdf8; }
+
+  .tabs { display:flex; gap:8px; margin-bottom:16px; }
+  .tabs button { flex:1; padding:10px; border:1px solid #334155; background:#0f172a; color:#94a3b8;
+                 border-radius:10px; font-size:15px; cursor:pointer; }
+  .tabs button.active { background:#38bdf8; color:#0f172a; font-weight:600; border-color:#38bdf8; }
+
+  input { width:100%; padding:14px; margin-bottom:12px; background:#0f172a; border:1px solid #334155;
+          border-radius:10px; color:#e2e8f0; font-size:16px; }
+  input:focus { outline:none; border-color:#38bdf8; }
+  .remember { display:flex; align-items:center; gap:8px; margin-bottom:16px; color:#94a3b8; font-size:14px; }
+  .remember input { width:auto; margin:0; }
+
+  .primary { width:100%; padding:15px; background:linear-gradient(90deg,#38bdf8,#0ea5e9); border:none;
+             border-radius:12px; color:#0f172a; font-size:17px; font-weight:600; cursor:pointer; }
+  .hint { text-align:center; font-size:13px; color:#64748b; margin-top:16px; line-height:1.5; }
+  #auth-msg { text-align:center; color:#f87171; font-size:14px; min-height:20px; margin-top:12px; }
+
+  .card { background:#1e293b; border:1px solid #334155; border-radius:16px; padding:20px; }
+  .header { display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; }
+  #user-name { font-size:17px; font-weight:600; }
+  #btn-logout { background:none; border:1px solid #475569; color:#94a3b8; padding:6px 14px;
+                border-radius:8px; cursor:pointer; font-size:13px; }
+  .date-line { text-align:center; color:#64748b; font-size:14px; margin-bottom:6px; }
+  .cur-status { text-align:center; font-size:20px; font-weight:600; padding:14px 0 22px; }
+
+  .status-btn { display:flex; align-items:center; gap:14px; width:100%; padding:18px; margin-bottom:12px;
+                background:#0f172a; border:2px solid #334155; border-radius:14px; color:#e2e8f0;
+                font-size:18px; cursor:pointer; transition:all .15s; }
+  .status-btn .em { font-size:26px; }
+  .status-btn.selected { border-color:#38bdf8; background:#164e63; box-shadow:0 0 14px rgba(56,189,248,.3); }
+  .status-btn[data-s="В работе"].selected { border-color:#4ade80; background:#14532d; box-shadow:0 0 14px rgba(74,222,128,.3); }
+  .status-btn[data-s="Ремонт"].selected   { border-color:#fb923c; background:#7c2d12; box-shadow:0 0 14px rgba(251,146,60,.3); }
+
+  .sync { display:flex; align-items:center; gap:8px; justify-content:center; margin-top:18px; font-size:13px; color:#64748b; }
+  .dot { width:10px; height:10px; border-radius:50%; background:#f87171; }
+  .dot.on { background:#4ade80; }
+  .dot.wait { background:#facc15; }
+
+  /* Модальное окно */
+  #overlay { position:fixed; inset:0; background:rgba(0,0,0,.7); display:none;
+             justify-content:center; align-items:center; padding:24px; z-index:10; }
+  .modal { background:#1e293b; border:1px solid #334155; border-radius:16px; padding:26px;
+           max-width:360px; width:100%; text-align:center; }
+  .modal h3 { color:#fbbf24; margin-bottom:12px; font-size:18px; }
+  .modal p { color:#cbd5e1; line-height:1.55; margin-bottom:20px; font-size:15px; }
+  .modal .row { display:flex; gap:10px; }
+  .modal .row button { flex:1; padding:12px; border-radius:10px; border:none; font-size:15px; cursor:pointer; font-weight:600; }
+  #m-cancel { background:#334155; color:#e2e8f0; }
+  #m-ok { background:#f59e0b; color:#0f172a; }
+
+  #toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%) translateY(80px);
+           background:#0f172a; border:1px solid #38bdf8; color:#e2e8f0; padding:12px 22px;
+           border-radius:12px; font-size:14px; transition:transform .25s; z-index:20; max-width:90%; }
+  #toast.show { transform:translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- ЭКРАН ВХОДА / РЕГИСТРАЦИИ -->
+  <div id="scr-auth">
+    <div class="logo">🚛</div>
+    <h1>Статус водителя</h1>
+    <div class="tabs">
+      <button id="tab-login" class="active">Вход</button>
+      <button id="tab-reg">Регистрация</button>
+    </div>
+
+    <div id="form-login">
+      <input id="l-login" placeholder="Логин" autocomplete="username">
+      <input id="l-pass" type="password" placeholder="Пароль" autocomplete="current-password">
+      <label class="remember"><input type="checkbox" id="remember"> Запомнить меня</label>
+      <button class="primary" id="btn-login">Войти</button>
+    </div>
+
+    <div id="form-reg" hidden>
+      <input id="r-fio" placeholder="ФИО полностью">
+      <input id="r-login" placeholder="Логин">
+      <input id="r-pass" type="password" placeholder="Пароль">
+      <button class="primary" id="btn-reg">Зарегистрироваться</button>
+    </div>
+
+    <p class="hint">Если забыли логин или пароль —<br>обратитесь к логисту</p>
+    <p id="auth-msg"></p>
+  </div>
+
+  <!-- ГЛАВНЫЙ ЭКРАН -->
+  <div id="scr-main" hidden>
+    <div class="header">
+      <span id="user-name"></span>
+      <button id="btn-logout">Выйти</button>
+    </div>
+    <div class="card">
+      <div class="date-line" id="today-line"></div>
+      <div class="cur-status" id="cur-status">—</div>
+
+      <button class="status-btn" data-s="В работе"><span class="em">🚚</span> В работе</button>
+      <button class="status-btn" data-s="Выходной"><span class="em">🏖️</span> Выходной</button>
+      <button class="status-btn" data-s="Ремонт"><span class="em">🔧</span> Ремонт</button>
+    </div>
+    <div class="sync"><span class="dot" id="net-dot"></span><span id="sync-text"></span></div>
+  </div>
+</div>
+
+<!-- МОДАЛЬНОЕ ОКНО -->
+<div id="overlay">
+  <div class="modal">
+    <h3>⚠️ Внимание!</h3>
+    <p id="m-text">Обязательно сообщите логисту об изменении статуса!</p>
+    <div class="row">
+      <button id="m-cancel">Отмена</button>
+      <button id="m-ok">Понятно, продолжить</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+const API_URL = 'ВСТАВЬТЕ_URL';   // ← URL веб-приложения из шага 2.2
+
+// ---------- состояние ----------
+let user   = JSON.parse(localStorage.getItem('dv_user') || sessionStorage.getItem('dv_user') || 'null');
+let queue  = JSON.parse(localStorage.getItem('dv_queue') || '[]');
+let cur    = JSON.parse(localStorage.getItem('dv_cur') || 'null');
+let pendingStatus = null;
+
+function todayStr() {
+  const d = new Date(), p = n => (n < 10 ? '0' + n : '' + n);
+  return p(d.getDate()) + '.' + p(d.getMonth() + 1) + '.' + d.getFullYear();
+}
+function saveUser() {
+  localStorage.removeItem('dv_user'); sessionStorage.removeItem('dv_user');
+  if (!user) return;
+  (user.remember ? localStorage : sessionStorage).setItem('dv_user', JSON.stringify(user));
+}
+function saveQueue() { localStorage.setItem('dv_queue', JSON.stringify(queue)); }
+function saveCur()   { localStorage.setItem('dv_cur', JSON.stringify(cur)); }
+
+async function api(action, data) {
+  const res = await fetch(API_URL, {
+    method: 'POST', redirect: 'follow',
+    body: JSON.stringify(Object.assign({ action: action }, data || {}))
+  });
+  return res.json();
+}
+
+function toast(t) {
+  const el = document.getElementById('toast');
+  el.textContent = t; el.classList.add('show');
+  clearTimeout(el._t); el._t = setTimeout(() => el.classList.remove('show'), 3000);
+}
+
+// ---------- экраны ----------
+function showAuth() {
+  document.getElementById('scr-main').hidden = true;
+  document.getElementById('scr-auth').style.display = 'block';
+}
+function showMain() {
+  document.getElementById('scr-auth').style.display = 'none';
+  document.getElementById('scr-main').hidden = false;
+  document.getElementById('user-name').textContent = user.fio;
+  document.getElementById('today-line').textContent = 'Сегодня, ' + todayStr();
+  renderStatus(); trySync(); loadServerStatus();
+  clearInterval(window._sync); window._sync = setInterval(trySync, 30000);
+}
+
+// ---------- статусы ----------
+function effectiveStatus() {
+  if (cur && cur.date === todayStr()) return cur.status;
+  return 'Не отмечен';
+}
+function renderStatus() {
+  const s = effectiveStatus();
+  document.getElementById('cur-status').textContent = s;
+  document.querySelectorAll('.status-btn').forEach(b =>
+    b.classList.toggle('selected', b.dataset.s === s));
+}
+
+document.querySelectorAll('.status-btn').forEach(b => {
+  b.addEventListener('click', () => {
+    const s = b.dataset.s;
+    if (effectiveStatus() === s) { toast('Этот статус уже установлен'); return; }
+    pendingStatus = s;
+    document.getElementById('m-text').textContent =
+      'Обязательно сообщите логисту об изменении статуса!';
+    document.getElementById('overlay').style.display = 'flex';
+  });
+});
+document.getElementById('m-cancel').onclick = () =>
+  document.getElementById('overlay').style.display = 'none';
+document.getElementById('m-ok').onclick = () => {
+  document.getElementById('overlay').style.display = 'none';
+  applyStatus(pendingStatus);
+};
+
+function applyStatus(s) {
+  cur = { date: todayStr(), status: s };
+  saveCur(); renderStatus();
+  queue.push({ login: user.login, fio: user.fio, status: s, date: todayStr() });
+  saveQueue();
+  toast('Сохранено' + (navigator.onLine ? '' : ' (отправится при появлении сети)'));
+  trySync();
+}
+
+// ---------- синхронизация ----------
+function syncUI() {
+  const dot = document.getElementById('net-dot');
+  const txt = document.getElementById('sync-text');
+  dot.className = 'dot' + (navigator.onLine ? (queue.length ? ' wait' : ' on') : '');
+  txt.textContent = !navigator.onLine ? 'Нет сети — статус сохранён локально'
+                   : queue.length ? 'Ожидает отправки: ' + queue.length
+                   : 'Синхронизировано';
+}
+
+async function trySync() {
+  syncUI();
+  if (!navigator.onLine || !queue.length || !user) return;
+  while (queue.length) {
+    const item = queue[0];
+    try {
+      const r = await api('setStatus', item);
+      if (r.ok) { queue.shift(); saveQueue(); }
+      else { toast(r.error || 'Ошибка отправки'); break; }
+    } catch (e) { break; } // нет сети / сервер недоступен — попробуем позже
+  }
+  syncUI();
+  if (!queue.length) loadServerStatus();
+}
+
+async function loadServerStatus() {
+  if (!navigator.onLine || !user || queue.length) return;
+  try {
+    const r = await api('getStatus', { login: user.login });
+    if (r.deleted) { toast('Ваш профиль удалён'); doLogout(); return; }
+    if (r.ok) { cur = { date: todayStr(), status: r.status }; saveCur(); renderStatus(); }
+  } catch (e) {}
+}
+
+window.addEventListener('online',  () => { syncUI(); trySync(); });
+window.addEventListener('offline', syncUI);
+
+// ---------- вход / регистрация ----------
+const msg = document.getElementById('auth-msg');
+function tab(login) {
+  document.getElementById('tab-login').classList.toggle('active', login);
+  document.getElementById('tab-reg').classList.toggle('active', !login);
+  document.getElementById('form-login').hidden = !login;
+  document.getElementById('form-reg').hidden = login;
+  msg.textContent = '';
+}
+document.getElementById('tab-login').onclick = () => tab(true);
+document.getElementById('tab-reg').onclick = () => tab(false);
+
+document.getElementById('btn-login').onclick = async () => {
+  msg.textContent = '';
+  const login = document.getElementById('l-login').value.trim();
+  const pass = document.getElementById('l-pass').value;
+  if (!login || !pass) { msg.textContent = 'Заполните поля'; return; }
+  if (!navigator.onLine) { msg.textContent = 'Нет сети. Войдите при появлении интернета'; return; }
+  try {
+    const r = await api('login', { login: login, password: pass });
+    if (!r.ok) { msg.textContent = r.error; return; }
+    user = { login: login, fio: r.fio, remember: document.getElementById('remember').checked };
+    saveUser(); showMain();
+  } catch (e) { msg.textContent = 'Нет связи с сервером'; }
+};
+
+document.getElementById('btn-reg').onclick = async () => {
+  msg.textContent = '';
+  const fio = document.getElementById('r-fio').value.trim();
+  const login = document.getElementById('r-login').value.trim();
+  const pass = document.getElementById('r-pass').value;
+  if (!fio || !login || !pass) { msg.textContent = 'Заполните все поля'; return; }
+  if (!navigator.onLine) { msg.textContent = 'Для регистрации нужен интернет'; return; }
+  try {
+    const r = await api('register', { fio: fio, login: login, password: pass });
+    if (!r.ok) { msg.textContent = r.error; return; }
+    user = { login: login, fio: r.fio, remember: true };
+    saveUser(); showMain();
+  } catch (e) { msg.textContent = 'Нет связи с сервером'; }
+};
+
+function doLogout() {
+  user = null; cur = null; queue = [];
+  saveUser(); saveCur(); saveQueue();
+  clearInterval(window._sync);
+  showAuth();
+}
+document.getElementById('btn-logout').onclick = doLogout;
+
+// регистрация service worker (офлайн-открытие приложения)
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
+
+// запуск
+if (user) showMain(); else showAuth();
+syncUI();
+</script>
+</body>
+</html>
