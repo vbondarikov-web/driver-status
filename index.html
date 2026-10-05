@@ -131,7 +131,7 @@
 <div id="toast"></div>
 
 <script>
-const API_URL = 'https://script.google.com/macros/s/AKfycbz0Lj11rGHF_mAumID2y-L5TsRoZzONixHpcuLhLDByiN0FadZRi_IIIIkT55eHpWIC/exec';   // ← URL веб-приложения из шага 2.2
+const API_URL = 'https://script.google.com/macros/s/AKfycbz0Lj11rGHF_mAumID2y-L5TsRoZzONixHpcuLhLDByiN0FadZRi_IIIIkT55eHpWIC/exec';
 
 // ---------- состояние ----------
 let user   = JSON.parse(localStorage.getItem('dv_user') || sessionStorage.getItem('dv_user') || 'null');
@@ -151,12 +151,15 @@ function saveUser() {
 function saveQueue() { localStorage.setItem('dv_queue', JSON.stringify(queue)); }
 function saveCur()   { localStorage.setItem('dv_cur', JSON.stringify(cur)); }
 
+// ---------- API (text/plain — чтобы не было CORS/preflight) ----------
 async function api(action, data) {
   const res = await fetch(API_URL, {
-    method: 'POST', redirect: 'follow',
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
     body: JSON.stringify(Object.assign({ action: action }, data || {}))
   });
-  return res.json();
+  const text = await res.text();
+  try { return JSON.parse(text); } catch(e) { throw new Error(text.slice(0, 300)); }
 }
 
 function toast(t) {
